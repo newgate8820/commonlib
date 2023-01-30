@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -39,16 +38,16 @@ func NewRegister(etcdAddrs []string, logger *zap.Logger) *Register {
 }
 
 // Register a service
-func (r *Register) Register(srvInfo Server, ttl int64) (chan<- struct{}, error) {
+func (r *Register) Register(srvInfo Server, ttl int64, username, password string) (chan<- struct{}, error) {
 	var err error
-
 	if strings.Split(srvInfo.Addr, ":")[0] == "" {
 		return nil, errors.New("invalid ip")
 	}
-
 	if r.cli, err = clientv3.New(clientv3.Config{
 		Endpoints:   r.EtcdAddrs,
 		DialTimeout: time.Duration(r.DialTimeout) * time.Second,
+		Username:    username,
+		Password:    password,
 	}); err != nil {
 		return nil, err
 	}
@@ -106,7 +105,6 @@ func (r *Register) keepAlive() {
 	for {
 		select {
 		case <-r.closeCh:
-			fmt.Println("+++++++")
 			if err := r.unregister(); err != nil {
 				r.logger.Error("unregister failed", zap.Error(err))
 			}

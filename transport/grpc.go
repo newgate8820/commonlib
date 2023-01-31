@@ -13,6 +13,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/status"
 	"log"
 	"time"
@@ -23,6 +24,30 @@ const (
 	Backoff    = 100
 )
 
+var (
+	retriableErrors = []codes.Code{codes.Unavailable, codes.DataLoss, codes.Unknown, codes.NotFound, codes.Aborted}
+)
+var (
+	kacp = keepalive.ClientParameters{
+		Time:                10 * time.Second, // send pings every 10 seconds if there is no activity
+		Timeout:             time.Second,      // wait 1 second for ping ack before considering the connection dead
+		PermitWithoutStream: true,             // send pings even without active streams
+	}
+
+	kaep = keepalive.EnforcementPolicy{
+		MinTime:             5 * time.Second, // If a client pings more than onIf a client pings more than oce every 5 seconds, terminate the connection
+		PermitWithoutStream: true,            // Allow pings even when there are no active streams
+	}
+
+	kasp = keepalive.ServerParameters{
+		MaxConnectionIdle:     15 * time.Second, // If a client is idle for 15 seconds, send a GOAWAY
+		MaxConnectionAge:      30 * time.Second, // If any connection is alive for more than 30 seconds, send a GOAWAY
+		MaxConnectionAgeGrace: 5 * time.Second,  // Allow 5 seconds for pending RPCs to complete before forcibly closing connections
+		Time:                  5 * time.Second,  // Ping the client if it is idle for 5 seconds to ensure the connection is still active
+		Timeout:               1 * time.Second,  // Wait 1 second for the ping ack before assuming the connection is dead
+	}
+)
+
 func NewGrpcConn(addr string, receiveSize int) *grpc.ClientConn {
 	var (
 		err  error
@@ -30,12 +55,14 @@ func NewGrpcConn(addr string, receiveSize int) *grpc.ClientConn {
 		conn *grpc.ClientConn
 	)
 	opts := []grpc_retry.CallOption{
+		grpc_retry.WithCodes(retriableErrors...),
+		grpc_retry.WithMax(RetryCount),
 		grpc_retry.WithBackoff(grpc_retry.BackoffLinear(Backoff * time.Millisecond)),
-		grpc_retry.WithCodes(codes.NotFound, codes.Aborted, codes.Unavailable),
 	}
 	conn, err = grpc.Dial(addr,
 		grpc.WithDefaultServiceConfig(`{"loadBalancingPolicy":"round_robin"}`),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithKeepaliveParams(kacp),
 		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(receiveSize*m)),
 		grpc.WithUnaryInterceptor(
 			grpc_middleware.ChainUnaryClient(
@@ -70,6 +97,7 @@ func NewGrpcServer() (rs *grpc.Server) {
 	}
 	grpc_zap.ReplaceGrpcLoggerV2(zapLogger)
 	return grpc.NewServer(
+		grpc.KeepaliveEnforcementPolicy(kaep), grpc.KeepaliveParams(kasp),
 		grpc.UnaryInterceptor(
 			grpc_middleware.ChainUnaryServer(
 				grpc_recovery.UnaryServerInterceptor(rcOpts...),

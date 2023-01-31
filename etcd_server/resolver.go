@@ -13,6 +13,7 @@ import (
 
 const (
 	schema = "etcd"
+	SCHEMA = "etcd:///"
 )
 
 // Resolver for grpc client

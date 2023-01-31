@@ -16,6 +16,10 @@ type Server struct {
 	Weight  int64  `json:"weight"`  //服务权重
 }
 
+func GetSchemaAddress(serverName string) string {
+	return SCHEMA + serverName
+}
+
 func BuildPrefix(info Server) string {
 	if info.Version == "" {
 		return fmt.Sprintf("/%s/", info.Name)

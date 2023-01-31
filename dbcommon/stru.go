@@ -65,6 +65,8 @@ type XormDefaultConfig struct {
 }
 
 type EtcdConfig struct {
+	// platform
+	Platform string `yaml:"Platform"`
 	// Endpoints is a list of URLs.
 	Endpoints []string `yaml:"Endpoints"`
 
